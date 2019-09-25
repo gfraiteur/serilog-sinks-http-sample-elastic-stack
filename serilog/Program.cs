@@ -2,7 +2,8 @@
 using System.Threading;
 using Bogus;
 using Serilog;
-using Serilog.Sinks.Http.BatchFormatters;
+using Serilog.Debugging;
+using Serilog.Sinks.Elasticsearch;
 using SerilogExample.Generators;
 
 namespace SerilogExample
@@ -11,26 +12,42 @@ namespace SerilogExample
     {
         static void Main()
         {
+            SelfLog.Enable( Console.Error );
+
             ILogger logger = new LoggerConfiguration()
-                .WriteTo.DurableHttp(
-                    requestUri: "http://logstash:31311",
-                    batchFormatter: new ArrayBatchFormatter())
+                .Enrich.FromLogContext()
+                .Enrich.WithProperty( "Application", "ClientExample" )
                 .WriteTo.Console()
-                .CreateLogger()
-                .ForContext<Program>();
+                .WriteTo.Elasticsearch( new ElasticsearchSinkOptions( new Uri( "http://localhost:9200" ) )
+                {
+                    BatchPostingLimit = 1, // For demo.
+                    AutoRegisterTemplate = true,
+                    AutoRegisterTemplateVersion = AutoRegisterTemplateVersion.ESv6,
+                    EmitEventFailure = EmitEventFailureHandling.ThrowException | EmitEventFailureHandling.WriteToSelfLog,
+                    FailureCallback = e => Console.WriteLine( "Unable to submit event " + e.MessageTemplate ),
+                    
+                } )
+                .CreateLogger();
+
+            IOrderProcessor orderProcessor = new WebClientOrderProcessor( logger );
 
             var customerGenerator = new CustomerGenerator();
             var orderGenerator = new OrderGenerator();
 
-            while (true)
+            for ( int i = 0 ; i < 10 ; i++ )
             {
                 var customer = customerGenerator.Generate();
                 var order = orderGenerator.Generate();
-                
-                logger.Information("{@customer} placed {@order}", customer, order);
-                
-                Thread.Sleep(1000);
+                order.CustomerId = customer.Id;
+
+                orderProcessor.Process( customer, order );
+                Thread.Sleep( 200 );
+
             }
+
+
+            Log.CloseAndFlush();
+            
         }
     }
 }

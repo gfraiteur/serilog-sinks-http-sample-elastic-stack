@@ -11,6 +11,7 @@ namespace SerilogExample.Generators
             var randomizer = new Randomizer();
 
             faker = new Faker<Customer>()
+                .RuleFor( customer => customer.Id, randomizer.Int(0, 1000) )
                 .RuleFor(customer => customer.FirstName, faker => faker.Name.FirstName())
                 .RuleFor(customer => customer.Surname, faker => faker.Name.LastName())
                 .RuleFor(customer => customer.SocialSecurityNumber, _ => randomizer.Replace("###-##-####"));
